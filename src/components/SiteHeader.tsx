@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
+
 
 const navItems = [
   { label: "Beranda", href: "/" },
@@ -16,13 +18,16 @@ export default function SiteHeader() {
     <header className="sticky top-0 z-50 border-b border-[#DCEBF0] bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 sm:px-8 lg:px-10">
         <Link href="/" className="flex shrink-0 items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0C3846] text-xl font-bold text-white">
-            C
-          </div>
-
-          <span className="text-lg font-bold tracking-wide text-[#0C3846] sm:text-xl">
-            CARAKA
-          </span>
+            <div className="flex items-center">
+                <Image
+                    src="/images/caraka-logo.png"
+                    alt="CARAKA"
+                    width={180}
+                    height={70}
+                    priority
+                    className="h-auto w-[140px] object-contain sm:w-[160px]"
+                />
+            </div>
         </Link>
 
         <nav

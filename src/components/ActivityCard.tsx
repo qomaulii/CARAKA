@@ -8,7 +8,7 @@ export default function ActivityCard({
 }) {
   return (
     <Link
-      href={`/aktivitas#${activity.id}`}
+      href={`/aktivitas/${activity.id}`}
       className="group flex h-full flex-col rounded-3xl border border-[#DCEBF0] bg-white p-6 transition duration-200 hover:-translate-y-1 hover:border-[#9FD3E3] hover:shadow-lg"
     >
       <div
@@ -39,7 +39,7 @@ export default function ActivityCard({
       </p>
 
       <span className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#0C3846]">
-        Lihat aktivitas
+        Mulai bermain
         <i
           className="bi bi-arrow-right transition-transform group-hover:translate-x-1"
           aria-hidden="true"
