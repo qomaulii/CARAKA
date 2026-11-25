@@ -184,7 +184,7 @@ export default function TentangPage() {
       </section>
 
       <footer className="border-t border-[#DCEBF0] px-5 py-6 text-center text-sm text-[#65828B]">
-        © {new Date().getFullYear()} CARAKA. Ruang belajar kreatif.
+        © {2026} CARAKA. Ruang belajar kreatif.
       </footer>
     </main>
   );

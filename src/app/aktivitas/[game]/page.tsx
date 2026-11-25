@@ -1,12 +1,21 @@
+
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import GamePlayer from "@/components/GamePlayer";
+import KnowledgePlayer from "@/components/KnowledgePlayer";
+import CreativityPlayer from "@/components/CreativityPlayer";
 
 const validGames = [
   "knowledge",
   "creativity",
   "self-expression",
 ];
+
+export function generateStaticParams() {
+  return validGames.map((game) => ({
+    game,
+  }));
+}
 
 type Props = {
   params: Promise<{
@@ -26,14 +35,15 @@ export async function generateMetadata({
   };
 
   if (!titles[game]) {
-    return { title: "Game tidak ditemukan" };
+    return { title: "Aktivitas tidak ditemukan" };
   }
 
   return {
     title: titles[game],
-    description: `Aktivitas ${titles[game]} di CARAKA.`,
+    description: `Aktivitas ${titles[game]} di CAKARA.`,
   };
 }
+
 
 export default async function GamePage({ params }: Props) {
   const { game } = await params;
@@ -42,5 +52,21 @@ export default async function GamePage({ params }: Props) {
     notFound();
   }
 
-  return <GamePlayer game={game} />;
+  // PERBAIKAN: Knowledge tetap menggunakan KnowledgePlayer.
+  if (game === "knowledge") {
+    return <KnowledgePlayer />;
+  }
+
+  // PERBAIKAN: Creativity menggunakan komponen khusus yang baru.
+  if (game === "creativity") {
+    return <CreativityPlayer />;
+  }
+
+  // PERBAIKAN: Self-Expression tetap menggunakan GamePlayer lama.
+  if (game === "self-expression") {
+    return <GamePlayer game="self-expression" />;
+  }
+
+  notFound();
 }
+

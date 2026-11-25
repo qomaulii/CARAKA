@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import SiteHeader from "@/components/SiteHeader";
+import ActivityHistory from "@/components/ActivityHistory";
 import ActivityCard from "@/components/ActivityCard";
 import { activities } from "@/data/activities";
+
 
 export const metadata: Metadata = {
   title: "Aktivitas",
@@ -36,6 +38,7 @@ export default function AktivitasPage() {
               <ActivityCard activity={activity} />
             </div>
           ))}
+          <ActivityHistory />
         </div>
 
         <div className="mt-12 rounded-3xl border border-[#DCEBF0] bg-white p-6 sm:p-8">
@@ -64,7 +67,7 @@ export default function AktivitasPage() {
       </section>
 
       <footer className="border-t border-[#DCEBF0] px-5 py-6 text-center text-sm text-[#65828B]">
-        © {new Date().getFullYear()} CARAKA. Ruang belajar kreatif.
+        © {2026} CARAKA. Ruang belajar kreatif.
       </footer>
     </main>
   );
