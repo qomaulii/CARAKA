@@ -397,7 +397,7 @@ export default function GamePlayer({ game }: { game: string }) {
             </div>
 
             <span className="rounded-full bg-[#F1F7F9] px-3 py-2 text-xs font-medium text-[#65828B]">
-              CAKARA
+              CARAKA
             </span>
           </div>
 
@@ -995,7 +995,7 @@ export default function GamePlayer({ game }: { game: string }) {
 
       {/* PERBAIKAN: Tahun statis agar aman saat prerendering. */}
       <footer className="border-t border-[#DCEBF0] px-5 py-6 text-center text-sm text-[#65828B]">
-        © 2026 CAKARA. Ruang belajar kreatif.
+        © 2026 CARAKA. Ruang belajar kreatif.
       </footer>
     </main>
   );

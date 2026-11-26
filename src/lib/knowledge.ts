@@ -218,55 +218,165 @@ export function shuffleQuestions<T>(items: T[]): T[] {
 // 6. PEMILIHAN SOAL DALAM SATU SESI
 // ============================================================
 
-// PERBAIKAN: Mengutamakan stimulus berbeda agar bacaan
-// tidak berulang dalam satu sesi.
+// Mengutamakan stimulus berbeda agar bacaan tidak berulang dalam satu sesi,
+// dengan komposisi tingkat kesulitan mengikuti tingkat belajar siswa.
 export function selectSessionQuestions(
   pool: BankQuestion[],
   sessionSize: number = SESSION_SIZE,
+  learningLevel: Difficulty | null = null,
 ): BankQuestion[] {
   if (pool.length === 0 || sessionSize <= 0) {
     return [];
   }
 
-  const shuffled = shuffleQuestions(pool);
+  let quotas: { difficulty: Difficulty; count: number }[];
+
+  if (learningLevel === "Mudah") {
+    quotas = [
+      { difficulty: "Mudah", count: Math.round(sessionSize * 0.6) },
+      { difficulty: "Sedang", count: Math.round(sessionSize * 0.3) },
+      {
+        difficulty: "Menantang",
+        count:
+          sessionSize -
+          Math.round(sessionSize * 0.6) -
+          Math.round(sessionSize * 0.3),
+      },
+    ];
+  } else if (learningLevel === "Sedang") {
+    quotas = [
+      { difficulty: "Mudah", count: Math.round(sessionSize * 0.3) },
+      { difficulty: "Sedang", count: Math.round(sessionSize * 0.5) },
+      {
+        difficulty: "Menantang",
+        count:
+          sessionSize -
+          Math.round(sessionSize * 0.3) -
+          Math.round(sessionSize * 0.5),
+      },
+    ];
+  } else if (learningLevel === "Menantang") {
+    quotas = [
+      { difficulty: "Mudah", count: Math.round(sessionSize * 0.2) },
+      { difficulty: "Sedang", count: Math.round(sessionSize * 0.3) },
+      {
+        difficulty: "Menantang",
+        count:
+          sessionSize -
+          Math.round(sessionSize * 0.2) -
+          Math.round(sessionSize * 0.3),
+      },
+    ];
+  } else {
+    // Komposisi asesmen awal 40% : 40% : 20%.
+    quotas = [
+      { difficulty: "Mudah", count: Math.round(sessionSize * 0.4) },
+      { difficulty: "Sedang", count: Math.round(sessionSize * 0.4) },
+      {
+        difficulty: "Menantang",
+        count: sessionSize - Math.round(sessionSize * 0.4) * 2,
+      },
+    ];
+  }
+
+  const shuffledPool = shuffleQuestions(pool);
   const selected: BankQuestion[] = [];
+  const usedIds = new Set<string>();
   const usedStimuli = new Set<string>();
 
-  for (const question of shuffled) {
-    const stimulusKey =
-      question.stimulus?.trim() || question.id;
+  for (const quota of quotas) {
+    const candidates = shuffledPool.filter(
+      (question) => question.difficulty === quota.difficulty,
+    );
 
-    if (usedStimuli.has(stimulusKey)) {
+    let count = 0;
+
+    for (const question of candidates) {
+      const stimulusKey = question.stimulus?.trim() || question.id;
+
+      if (usedIds.has(question.id) || usedStimuli.has(stimulusKey)) {
+        continue;
+      }
+
+      selected.push(question);
+      usedIds.add(question.id);
+      usedStimuli.add(stimulusKey);
+      count++;
+
+      if (count >= quota.count || selected.length >= sessionSize) {
+        break;
+      }
+    }
+  }
+
+  // Lengkapi sesi jika kuota kesulitan tertentu belum mencukupi.
+  for (const question of shuffledPool) {
+    if (selected.length >= sessionSize) break;
+
+    const stimulusKey = question.stimulus?.trim() || question.id;
+
+    if (usedIds.has(question.id) || usedStimuli.has(stimulusKey)) {
       continue;
     }
 
     selected.push(question);
+    usedIds.add(question.id);
     usedStimuli.add(stimulusKey);
-
-    if (selected.length >= sessionSize) {
-      return selected;
-    }
   }
 
-  // Jika stimulus unik tidak mencukupi, gunakan soal
-  // yang belum terpilih untuk melengkapi sesi.
-  for (const question of shuffled) {
-    if (
-      selected.some(
-        (item) => item.id === question.id,
-      )
-    ) {
-      continue;
-    }
+  // Jika stimulus unik tidak mencukupi, gunakan soal lain yang belum terpilih.
+  for (const question of shuffledPool) {
+    if (selected.length >= sessionSize) break;
+    if (usedIds.has(question.id)) continue;
 
     selected.push(question);
-
-    if (selected.length >= sessionSize) {
-      break;
-    }
+    usedIds.add(question.id);
   }
 
-  return selected;
+  return shuffleQuestions(selected).slice(0, sessionSize);
+}
+
+// ============================================================
+// 6B. EVALUASI TINGKAT BELAJAR ANTAR-SESI
+// ============================================================
+
+/** Mengevaluasi tingkat belajar Knowledge berikutnya berdasarkan akurasi tiap tingkat kesulitan. */
+export function evaluateNextLearningLevel(
+  answers: ReadonlyArray<{ difficulty: Difficulty; isCorrect: boolean }>,
+): Difficulty {
+  const getPerformance = (difficulty: Difficulty) => {
+    const difficultyAnswers = answers.filter(
+      (answer) => answer.difficulty === difficulty,
+    );
+    const correct = difficultyAnswers.filter((answer) => answer.isCorrect).length;
+
+    return {
+      total: difficultyAnswers.length,
+      percentage:
+        difficultyAnswers.length > 0
+          ? correct / difficultyAnswers.length
+          : 0,
+    };
+  };
+
+  const easyResult = getPerformance("Mudah");
+  const mediumResult = getPerformance("Sedang");
+  const challengingResult = getPerformance("Menantang");
+
+  const passesEasy = easyResult.total > 0 && easyResult.percentage >= 0.75;
+  const passesMedium = mediumResult.total > 0 && mediumResult.percentage >= 0.75;
+  const passesChallenging =
+    challengingResult.total > 0 && challengingResult.percentage >= 0.5;
+
+  if (passesEasy && passesMedium && passesChallenging) {
+    return "Menantang";
+  }
+
+  if (passesEasy) {
+    return "Sedang";
+  }
+
+  return "Mudah";
 }
 
 // ============================================================

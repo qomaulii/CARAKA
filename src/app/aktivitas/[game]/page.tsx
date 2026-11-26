@@ -1,9 +1,9 @@
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import GamePlayer from "@/components/GamePlayer";
 import KnowledgePlayer from "@/components/KnowledgePlayer";
 import CreativityPlayer from "@/components/CreativityPlayer";
+import SelfExpressionPlayer from "@/components/SelfExpressionPlayer";
 
 const validGames = [
   "knowledge",
@@ -40,7 +40,7 @@ export async function generateMetadata({
 
   return {
     title: titles[game],
-    description: `Aktivitas ${titles[game]} di CAKARA.`,
+    description: `Aktivitas ${titles[game]} di CARAKA.`,
   };
 }
 
@@ -62,9 +62,9 @@ export default async function GamePage({ params }: Props) {
     return <CreativityPlayer />;
   }
 
-  // PERBAIKAN: Self-Expression tetap menggunakan GamePlayer lama.
+  // Self-Expression menggunakan komponen khusus dengan Adaptive Engine tersendiri.
   if (game === "self-expression") {
-    return <GamePlayer game="self-expression" />;
+    return <SelfExpressionPlayer />;
   }
 
   notFound();

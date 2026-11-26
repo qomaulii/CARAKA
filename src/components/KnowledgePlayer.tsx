@@ -5,62 +5,24 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import SiteHeader from "@/components/SiteHeader";
 import { saveActivityHistory } from "@/lib/activityStorage";
-import questionBankJson from "@/data/bank_soal_knowledge_cakara_1500.json";
+import {
+  CATEGORY_OPTIONS,
+  SESSION_SIZE,
+  evaluateNextLearningLevel,
+  getQuestionPool,
+  selectSessionQuestions,
+  type BankQuestion,
+  type CategoryFilter,
+  type CategoryKey,
+  type Difficulty,
+  type OptionKey,
+} from "@/lib/knowledge";
 
 // ============================================================
-// 1. TIPE DATA
+// 1. TIPE DATA LOKAL SESI
 // ============================================================
-
-type OptionKey = "A" | "B" | "C" | "D";
-
-type Difficulty = "Mudah" | "Sedang" | "Menantang";
-
-type CategoryKey = "UMUM" | "SAINS" | "SEJARAH" | "NUMERASI" | "LITERASI";
-
-type CategoryFilter = CategoryKey | "ALL";
-
-type QuestionType = "single_select" | "multiple_select" | "true_false";
 
 type QuizPhase = "setup" | "playing" | "result";
-
-interface TrueFalseStatement {
-  text: string;
-  answer: boolean;
-}
-
-interface BankQuestion {
-  id: string;
-  category: string;
-  grade?: number; // Metadata internal, tidak dipilih atau difilter oleh siswa.
-  phase?: string;
-  topic: string;
-  subtopic: string;
-  difficulty: Difficulty;
-  stimulus: string;
-  question: string;
-  question_type: QuestionType;
-  options?: Record<OptionKey, string>;
-  answer?: OptionKey;
-  correct_answers?: OptionKey[];
-  statements?: TrueFalseStatement[];
-  answer_text?: string;
-  explanation: string;
-  source: string;
-}
-
-interface QuestionCategory {
-  name: string;
-  description: string;
-  questions: BankQuestion[];
-}
-
-interface QuestionBank {
-  title: string;
-  version: string;
-  created_date?: string;
-  description: string;
-  categories: Record<CategoryKey, QuestionCategory>;
-}
 
 interface AnswerRecord {
   questionId: string;
@@ -82,235 +44,6 @@ interface CategoryResult {
   total: number;
   correct: number;
   percentage: number;
-}
-
-// ============================================================
-// 2. BANK SOAL DAN KONFIGURASI
-// ============================================================
-
-// PERBAIKAN: Data soal dibaca langsung dari file JSON.
-const questionBank = questionBankJson as unknown as QuestionBank;
-
-const CATEGORY_OPTIONS = (
-  Object.entries(questionBank.categories) as [
-    CategoryKey,
-    QuestionCategory,
-  ][]
-).map(([key, category]) => ({
-  key,
-  name: category.name,
-  description: category.description,
-}));
-
-const DIFFICULTY_LEVEL: Record<Difficulty, number> = {
-  Mudah: 1,
-  Sedang: 2,
-  Menantang: 3,
-};
-
-const SESSION_SIZE = 10;
-
-// ============================================================
-// 3. FUNGSI PENGOLAHAN BANK SOAL
-// ============================================================
-
-function getQuestionPool(category: CategoryFilter): BankQuestion[] {
-  // PERBAIKAN: Tidak ada lagi filter kelas; siswa cukup memilih topik belajar.
-  const selectedCategories =
-    category === "ALL"
-      ? Object.values(questionBank.categories)
-      : [questionBank.categories[category]];
-
-  return selectedCategories
-    .filter((item): item is QuestionCategory => Boolean(item))
-    .flatMap((item) => item.questions ?? [])
-    .filter((question) => {
-      const type = question.question_type ?? "single_select";
-
-      if (type === "single_select") {
-        return Boolean(
-          question.options &&
-            question.answer &&
-            question.answer in question.options,
-        );
-      }
-
-      if (type === "multiple_select") {
-        return Boolean(
-          question.options &&
-            question.correct_answers &&
-            question.correct_answers.length > 1 &&
-            question.correct_answers.every((key) => key in question.options!),
-        );
-      }
-
-      return Boolean(question.statements && question.statements.length >= 3);
-    });
-}
-
-// PERBAIKAN: Satu sesi mengutamakan stimulus berbeda agar bacaan tidak berulang.
-
-function selectSessionQuestions(
-  pool: BankQuestion[],
-  sessionSize: number,
-  learningLevel: Difficulty | null = null,
-): BankQuestion[] {
-  // PERBAIKAN: Tentukan komposisi berdasarkan tingkat belajar.
-  // null berarti siswa belum memiliki hasil evaluasi sebelumnya.
-  let quotas: { difficulty: Difficulty; count: number }[];
-
-  if (learningLevel === "Mudah") {
-    quotas = [
-      { difficulty: "Mudah", count: Math.round(sessionSize * 0.6) },
-      { difficulty: "Sedang", count: Math.round(sessionSize * 0.3) },
-      {
-        difficulty: "Menantang",
-        count: sessionSize -
-          Math.round(sessionSize * 0.6) -
-          Math.round(sessionSize * 0.3),
-      },
-    ];
-  } else if (learningLevel === "Sedang") {
-    quotas = [
-      { difficulty: "Mudah", count: Math.round(sessionSize * 0.3) },
-      { difficulty: "Sedang", count: Math.round(sessionSize * 0.5) },
-      {
-        difficulty: "Menantang",
-        count: sessionSize -
-          Math.round(sessionSize * 0.3) -
-          Math.round(sessionSize * 0.5),
-      },
-    ];
-  } else if (learningLevel === "Menantang") {
-    quotas = [
-      { difficulty: "Mudah", count: Math.round(sessionSize * 0.2) },
-      { difficulty: "Sedang", count: Math.round(sessionSize * 0.3) },
-      {
-        difficulty: "Menantang",
-        count: sessionSize -
-          Math.round(sessionSize * 0.2) -
-          Math.round(sessionSize * 0.3),
-      },
-    ];
-  } else {
-    // PERBAIKAN: Komposisi asesmen awal 40% : 40% : 20%.
-    quotas = [
-      { difficulty: "Mudah", count: Math.round(sessionSize * 0.4) },
-      { difficulty: "Sedang", count: Math.round(sessionSize * 0.4) },
-      {
-        difficulty: "Menantang",
-        count: sessionSize -
-          Math.round(sessionSize * 0.4) * 2,
-      },
-    ];
-  }
-
-  // PERBAIKAN: Acak seluruh kandidat setiap kali sesi dimulai.
-  const shuffledPool = shuffleQuestions(pool);
-
-  const selected: BankQuestion[] = [];
-  const usedIds = new Set<string>();
-  const usedStimuli = new Set<string>();
-
-  // PERBAIKAN: Pilih soal berdasarkan kuota tingkat kesulitan.
-  for (const quota of quotas) {
-    const candidates = shuffledPool.filter(
-      (question) => question.difficulty === quota.difficulty,
-    );
-
-    let count = 0;
-
-    for (const question of candidates) {
-      const stimulusKey = question.stimulus?.trim() || question.id;
-
-      if (usedIds.has(question.id) || usedStimuli.has(stimulusKey)) {
-        continue;
-      }
-
-      selected.push(question);
-      usedIds.add(question.id);
-      usedStimuli.add(stimulusKey);
-      count++;
-
-      if (count >= quota.count || selected.length >= sessionSize) {
-        break;
-      }
-    }
-  }
-
-  // PERBAIKAN: Lengkapi sesi jika kuota kesulitan tidak terpenuhi.
-  for (const question of shuffledPool) {
-    if (selected.length >= sessionSize) break;
-
-    const stimulusKey = question.stimulus?.trim() || question.id;
-
-    if (usedIds.has(question.id) || usedStimuli.has(stimulusKey)) {
-      continue;
-    }
-
-    selected.push(question);
-    usedIds.add(question.id);
-    usedStimuli.add(stimulusKey);
-  }
-
-  // PERBAIKAN: Jika stimulus unik tidak cukup, gunakan soal lain
-  // yang belum terpilih agar sesi tetap dapat dilengkapi.
-  for (const question of shuffledPool) {
-    if (selected.length >= sessionSize) break;
-    if (usedIds.has(question.id)) continue;
-
-    selected.push(question);
-    usedIds.add(question.id);
-  }
-
-  // PERBAIKAN: Acak kembali seluruh urutan soal sebelum ditampilkan.
-  return shuffleQuestions(selected).slice(0, sessionSize);
-}
-
-function shuffleQuestions<T>(items: T[]): T[] {
-  const shuffled = [...items];
-
-  // Fisher-Yates shuffle.
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const randomIndex = Math.floor(Math.random() * (i + 1));
-
-    [shuffled[i], shuffled[randomIndex]] = [
-      shuffled[randomIndex],
-      shuffled[i],
-    ];
-  }
-
-  return shuffled;
-}
-
-// ============================================================
-// 4. MEKANISME ADAPTIF
-// ============================================================
-
-function chooseAdaptiveQuestion(
-  questions: BankQuestion[],
-  targetDifficulty: Difficulty,
-): BankQuestion | null {
-  if (questions.length === 0) return null;
-
-  const targetLevel = DIFFICULTY_LEVEL[targetDifficulty];
-
-  // PERBAIKAN: Cari soal dengan tingkat kesulitan paling dekat.
-  const closestDistance = Math.min(
-    ...questions.map((question) => {
-      const questionLevel = DIFFICULTY_LEVEL[question.difficulty];
-
-      return Math.abs(questionLevel - targetLevel);
-    }),
-  );
-
-  const candidates = questions.filter((question) => {
-    const questionLevel = DIFFICULTY_LEVEL[question.difficulty];
-
-    return Math.abs(questionLevel - targetLevel) === closestDistance;
-  });
-
-  return candidates[Math.floor(Math.random() * candidates.length)] ?? null;
 }
 
 // ============================================================
@@ -530,48 +263,8 @@ function startQuiz() {
     // =========================================================
 
     if (questionNumber >= sessionTotal) {
-      // PERBAIKAN: Hitung jumlah jawaban benar berdasarkan kesulitan.
-      const getPerformance = (difficulty: Difficulty) => {
-        const difficultyAnswers = answers.filter(
-          (answer) => answer.difficulty === difficulty,
-        );
-
-        const correct = difficultyAnswers.filter(
-          (answer) => answer.isCorrect,
-        ).length;
-
-        return {
-          total: difficultyAnswers.length,
-          correct,
-          percentage:
-            difficultyAnswers.length > 0
-              ? correct / difficultyAnswers.length
-              : 0,
-        };
-      };
-
-      const easyResult = getPerformance("Mudah");
-      const mediumResult = getPerformance("Sedang");
-      const challengingResult = getPerformance("Menantang");
-
-      // PERBAIKAN: Tentukan tingkat belajar untuk sesi berikutnya.
-      let nextLearningLevel: Difficulty = "Mudah";
-
-      const passesEasy =
-        easyResult.total > 0 && easyResult.percentage >= 0.75;
-
-      const passesMedium =
-        mediumResult.total > 0 && mediumResult.percentage >= 0.75;
-
-      const passesChallenging =
-        challengingResult.total > 0 &&
-        challengingResult.percentage >= 0.5;
-
-      if (passesEasy && passesMedium && passesChallenging) {
-        nextLearningLevel = "Menantang";
-      } else if (passesEasy) {
-        nextLearningLevel = "Sedang";
-      }
+      // Gunakan fungsi evaluasi dari lib/knowledge agar aturan adaptif terpusat.
+      const nextLearningLevel = evaluateNextLearningLevel(answers);
 
       // PERBAIKAN: Simpan tingkat belajar secara internal per kategori.
       // Hasil klasifikasi tidak ditampilkan kepada siswa.
@@ -601,7 +294,7 @@ function startQuiz() {
               (item) => item.key === category,
             )?.name ?? "Kategori tidak diketahui";
 
-      // PERBAIKAN: Simpan riwayat pengerjaan siswa.
+      // PERBAIKAN: Simpan riwayat pengerjaan siswa beserta metadata kategori dan kesulitan.
       const saved = saveActivityHistory({
         activity: "knowledge",
         completedAt: new Date().toISOString(),
@@ -614,6 +307,8 @@ function startQuiz() {
           prompt: answer.question,
           response: answer.selectedText,
           correct: answer.isCorrect,
+          category: answer.category,
+          difficulty: answer.difficulty,
           explanation: answer.isCorrect
             ? answer.explanation
             : `Jawaban yang tepat: ${answer.correctText}. ${answer.explanation}`,
@@ -776,8 +471,8 @@ const resultPraise = !strongestCategory
 
           <p className="mt-5 text-sm leading-7 text-[#65828B] sm:text-base">
             Uji pengetahuanmu melalui pertanyaan dari berbagai bidang
-            pembelajaran. Setiap jawaban akan membantu menentukan tingkat
-            kesulitan pertanyaan berikutnya.
+            pembelajaran. Hasil seluruh sesi akan membantu menyesuaikan tingkat
+            kesulitan latihan berikutnya.
           </p>
 
           {/* ==================================================
@@ -844,7 +539,7 @@ const resultPraise = !strongestCategory
                     • Pelajari pembahasan setelah memeriksa jawaban.
                   </li>
                   <li>
-                    • Tingkat kesulitan soal menyesuaikan jawabanmu.
+                    • Tingkat kesulitan sesi berikutnya menyesuaikan hasil latihanmu.
                   </li>
                 </ul>
               </div>
@@ -1367,7 +1062,7 @@ const resultPraise = !strongestCategory
       </section>
 
       <footer className="border-t border-[#DCEBF0] px-5 py-6 text-center text-sm text-[#65828B]">
-        © 2026 CAKARA. Ruang belajar kreatif.
+        © 2026 CARAKA. Ruang belajar kreatif.
       </footer>
     </main>
   );

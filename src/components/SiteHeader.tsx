@@ -29,11 +29,11 @@ export default function SiteHeader() {
             href="/"
             className="shrink-0"
             onClick={() => setMenuOpen(false)}
-            aria-label="CAKARA, kembali ke beranda"
+            aria-label="CARAKA, kembali ke beranda"
           >
             <Image
               src="/images/caraka-logo.png"
-              alt="CAKARA"
+              alt="CARAKA"
               width={180}
               height={70}
               priority

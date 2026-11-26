@@ -38,8 +38,10 @@ export default function AktivitasPage() {
               <ActivityCard activity={activity} />
             </div>
           ))}
-          <ActivityHistory />
         </div>
+
+        {/* Dipindah keluar grid kartu agar riwayat tampil selebar penuh di semua ukuran layar. */}
+        <ActivityHistory />
 
         <div className="mt-12 rounded-3xl border border-[#DCEBF0] bg-white p-6 sm:p-8">
           <div className="flex items-start gap-4">

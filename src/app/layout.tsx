@@ -11,8 +11,8 @@ const geist = Geist({
 
 export const metadata: Metadata = {
   title: {
-    default: "CAKARA | Ruang Belajar Kreatif",
-    template: "%s | CAKARA",
+    default: "CARAKA | Ruang Belajar Kreatif",
+    template: "%s | CARAKA",
   },
   description:
     "Platform pembelajaran adaptif untuk mengembangkan pengetahuan, kreativitas, dan ekspresi siswa sekolah dasar.",

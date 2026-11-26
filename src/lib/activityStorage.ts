@@ -180,15 +180,15 @@ function getResponseCategory(
 // ============================================================
 
 export function getAdaptiveLearningRecommendation(
-  grade: number,
+  grade?: number,
   selectedCategory?: string,
 ): AdaptiveLearningRecommendation | null {
-  // PERBAIKAN: Ambil hanya riwayat Knowledge pada kelas yang sama.
+  // Ambil riwayat Knowledge; filter kelas hanya diterapkan jika parameter grade diberikan.
   const recentSessions = loadActivityHistory()
     .filter(
       (record) =>
         record.activity === "knowledge" &&
-        record.grade === grade,
+        (typeof grade !== "number" || record.grade === grade),
     )
     .sort(
       (a, b) =>

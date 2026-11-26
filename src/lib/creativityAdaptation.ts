@@ -5,6 +5,7 @@ import type {
   CreativityProfile,
   CreativityScene,
   CreativitySessionRecord,
+  CreativityStimulusObject,
 } from "@/lib/creativityTypes";
 
 interface CreativityRuleCondition {
@@ -92,15 +93,35 @@ export function shouldShowCreativityHelp(
 export function analyzeCreativityResponse(
   responseText: string,
   scene: CreativityScene,
+  stimulusObjects?: CreativityStimulusObject[],
 ): CreativityIndicators {
   const normalizedResponse = normalizeText(responseText);
   const words = normalizedResponse.split(/\s+/).filter(Boolean);
+  const activeObjects =
+    stimulusObjects && stimulusObjects.length > 0 ? stimulusObjects : scene.objects;
 
-  const mentionedObjects = scene.objects
+  const mentionedObjects = activeObjects
     .filter((object) => object.keywords.some((keyword) => containsPhrase(normalizedResponse, keyword)))
     .map((object) => object.name);
 
+  // Kumpulkan kata terkait konteks (relatedTerms) secara terpisah tanpa menghitungnya sebagai objek langsung.
+  const relatedContextTerms = Array.from(
+    new Set(
+      activeObjects.flatMap((object) =>
+        object.relatedTerms.filter((term) => containsPhrase(normalizedResponse, term)),
+      ),
+    ),
+  );
+
   const hasReason = /\b(karena|soalnya|supaya|agar|sebab|sehingga)\b/i.test(normalizedResponse);
+  const hasEmotionObservation =
+    /\b(senang|gembira|bahagia|ceria|sedih|kecewa|takut|marah|bingung|kagum|terkejut|antusias|semangat|ramah|nyaman|khawatir|perasaan|merasa)\b/i.test(
+      normalizedResponse,
+    );
+  const hasFuturePrediction =
+    /\b(akan|nanti|setelah|selanjutnya|kemudian|berikutnya|lalu|mungkin|sebentar lagi)\b/i.test(
+      normalizedResponse,
+    );
 
   // Heuristik ragam ide: menghitung klausa unik, bukan menilai kualitas ide.
   const clauses = normalizedResponse
@@ -111,7 +132,10 @@ export function analyzeCreativityResponse(
   return {
     mentionedObjectCount: mentionedObjects.length,
     mentionedObjects,
+    relatedContextTerms,
     hasReason,
+    hasEmotionObservation,
+    hasFuturePrediction,
     ideaVarietyCount: new Set(clauses).size,
     wordCount: words.length,
     characterCount: responseText.trim().length,

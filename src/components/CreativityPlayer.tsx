@@ -15,12 +15,17 @@ import {
   shouldShowCreativityHelp,
   updateCreativityProfile,
 } from "@/lib/creativityAdaptation";
+import { detectSceneObjects } from "@/lib/creativityVision";
+import { useSpeechToText } from "@/lib/useSpeechToText";
 import type {
   CreativityFinishReason,
   CreativityGrade,
   CreativityInputMode,
+  CreativityObjectDetectionStatus,
   CreativityScene,
   CreativitySessionRecord,
+  CreativityStimulusObject,
+  DetectedVisionObject,
 } from "@/lib/creativityTypes";
 
 const TOTAL_SECONDS = 5 * 60;
@@ -33,34 +38,6 @@ const STARTER_QUESTIONS = [
 
 const HELPER_HINT =
   "Coba amati satu bagian gambar yang paling menarik perhatianmu. Apa yang kamu perhatikan di sana?";
-
-interface SpeechRecognitionResultItemLike {
-  transcript: string;
-}
-
-interface SpeechRecognitionResultLike extends ArrayLike<SpeechRecognitionResultItemLike> {}
-
-interface SpeechRecognitionEventLike {
-  resultIndex: number;
-  results: ArrayLike<SpeechRecognitionResultLike>;
-}
-
-interface SpeechRecognitionLike {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: { error?: string }) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-}
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-type SpeechWindow = Window & {
-  SpeechRecognition?: SpeechRecognitionConstructor;
-  webkitSpeechRecognition?: SpeechRecognitionConstructor;
-};
 
 function appendUniqueMode(
   current: CreativityInputMode[],
@@ -77,8 +54,6 @@ export default function CreativityPlayer() {
   const [responseText, setResponseText] = useState("");
   const [inputMode, setInputMode] = useState<CreativityInputMode>("writing");
   const [inputModes, setInputModes] = useState<CreativityInputMode[]>([]);
-  const [inputNotice, setInputNotice] = useState("");
-  const [isListening, setIsListening] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [helpShown, setHelpShown] = useState(false);
   const [helpCount, setHelpCount] = useState(0);
@@ -86,22 +61,43 @@ export default function CreativityPlayer() {
   const [sessionRecord, setSessionRecord] = useState<CreativitySessionRecord | null>(null);
   const [saveWarning, setSaveWarning] = useState(false);
 
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  // State Computer Vision untuk deteksi objek otomatis dengan fallback metadata manual.
+  const [visionStatus, setVisionStatus] = useState<"idle" | "detecting" | "ready">("idle");
+  const [detectionStatus, setDetectionStatus] =
+    useState<CreativityObjectDetectionStatus>("manual-metadata-placeholder");
+  const [detectedVisionObjects, setDetectedVisionObjects] = useState<DetectedVisionObject[]>([]);
+  const [activeSceneObjects, setActiveSceneObjects] = useState<CreativityStimulusObject[]>([]);
+
   const finishedRef = useRef(false);
   const ageBand = useMemo(() => getAgeBand(grade), [grade]);
   const isLowerGrade = grade <= 4;
   const responseWordCount = responseText.trim().split(/\s+/).filter(Boolean).length;
   const timerProgress = Math.min(100, (elapsedSeconds / TOTAL_SECONDS) * 100);
 
+  // Gunakan hook Speech-to-Text bersama agar mendukung interim transcript dan penanganan error izin mikrofon.
+  const {
+    isListening,
+    interimTranscript,
+    statusMessage: speechStatusMessage,
+    errorMessage: speechErrorMessage,
+    startRecording,
+    stopRecording,
+    resetMessages: resetSpeechMessages,
+  } = useSpeechToText({
+    value: responseText,
+    onChange: setResponseText,
+    maxLength: 3000,
+    onFinalTranscript: () => {
+      setInputModes((previous) => appendUniqueMode(previous, "speech-to-text"));
+    },
+    onFallbackToText: () => {
+      setInputMode("writing");
+    },
+  });
+
   const stopListening = useCallback(() => {
-    try {
-      recognitionRef.current?.stop();
-    } catch {
-      // Browser dapat mengakhiri pengenalan suara lebih dahulu.
-    }
-    recognitionRef.current = null;
-    setIsListening(false);
-  }, []);
+    stopRecording();
+  }, [stopRecording]);
 
   const finishSession = useCallback(
     (finishReason: CreativityFinishReason) => {
@@ -118,7 +114,13 @@ export default function CreativityPlayer() {
         Math.min(TOTAL_SECONDS, elapsedFromStart || elapsedSeconds),
       );
 
-      const indicators = analyzeCreativityResponse(responseText, scene);
+      const effectiveObjects =
+        activeSceneObjects.length > 0 ? activeSceneObjects : scene.objects;
+      const indicators = analyzeCreativityResponse(
+        responseText,
+        scene,
+        effectiveObjects,
+      );
       const currentProfile = loadCreativityProfile(ageBand);
       const updatedProfile = updateCreativityProfile(
         currentProfile,
@@ -139,8 +141,9 @@ export default function CreativityPlayer() {
         sceneTitle: scene.title,
         imageSrc: scene.imageSrc,
         complexityUsed: scene.complexity,
-        sceneObjects: scene.objects.map((object) => object.name),
-        objectDetectionStatus: scene.objectDetectionStatus,
+        sceneObjects: effectiveObjects.map((object) => object.name),
+        detectedVisionObjects,
+        objectDetectionStatus: detectionStatus,
         responseText: responseText.trim(),
         inputModes,
         startedAt,
@@ -158,7 +161,10 @@ export default function CreativityPlayer() {
       setSaveWarning(!sessionSaved || !profileSaved);
       setFinished(true);
     }, [
+      activeSceneObjects,
       ageBand,
+      detectedVisionObjects,
+      detectionStatus,
       elapsedSeconds,
       grade,
       helpCount,
@@ -209,16 +215,24 @@ export default function CreativityPlayer() {
     }
   }, [elapsedSeconds, finishSession, finished, started]);
 
-  // Hentikan pengenalan suara ketika komponen dilepas dari halaman.
+  // Jalankan Computer Vision secara non-blocking saat ilustrasi sesi aktif.
   useEffect(() => {
+    if (!started || finished || !scene) return;
+
+    let cancelled = false;
+
+    detectSceneObjects(scene).then((result) => {
+      if (cancelled) return;
+      setDetectedVisionObjects(result.detectedObjects);
+      setActiveSceneObjects(result.mergedObjects);
+      setDetectionStatus(result.status);
+      setVisionStatus("ready");
+    });
+
     return () => {
-      try {
-        recognitionRef.current?.stop();
-      } catch {
-        // Tidak ada tindakan lanjutan saat komponen dilepas.
-      }
+      cancelled = true;
     };
-  }, []);
+  }, [finished, scene, started]);
 
   function startSession() {
     const profile = loadCreativityProfile(ageBand);
@@ -233,12 +247,15 @@ export default function CreativityPlayer() {
     setResponseText("");
     setInputMode("writing");
     setInputModes([]);
-    setInputNotice("");
-    setIsListening(false);
+    resetSpeechMessages();
     setHelpShown(false);
     setHelpCount(0);
     setSessionRecord(null);
     setSaveWarning(false);
+    setVisionStatus("detecting");
+    setDetectionStatus(selectedScene.objectDetectionStatus);
+    setDetectedVisionObjects([]);
+    setActiveSceneObjects(selectedScene.objects);
     setFinished(false);
     setStarted(true);
   }
@@ -251,78 +268,19 @@ export default function CreativityPlayer() {
   }
 
   function startSpeechToText() {
-    const speechWindow = window as SpeechWindow;
-    const Recognition =
-      speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
-
-    if (!Recognition) {
-      setInputMode("writing");
-      setInputNotice(
-        "Fitur bicara belum tersedia di browser ini. Kamu tetap bisa menulis jawaban.",
-      );
-      return;
-    }
-
-    stopListening();
-
-    try {
-      const recognition = new Recognition();
-      recognition.lang = "id-ID";
-      recognition.continuous = true;
-      recognition.interimResults = false;
-
-      recognition.onresult = (event) => {
-        const transcriptParts: string[] = [];
-        for (let index = event.resultIndex; index < event.results.length; index += 1) {
-          const transcript = event.results[index]?.[0]?.transcript;
-          if (transcript?.trim()) transcriptParts.push(transcript.trim());
-        }
-
-        if (transcriptParts.length > 0) {
-          const transcript = transcriptParts.join(" ");
-          setResponseText((previous) =>
-            `${previous}${previous.trim() ? " " : ""}${transcript}`,
-          );
-          setInputModes((previous) => appendUniqueMode(previous, "speech-to-text"));
-        }
-      };
-
-      recognition.onerror = () => {
-        recognitionRef.current = null;
-        setIsListening(false);
-        setInputMode("writing");
-        setInputNotice(
-          "Mikrofon belum bisa digunakan. Kamu bisa melanjutkan dengan menulis.",
-        );
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-        if (recognitionRef.current === recognition) {
-          recognitionRef.current = null;
-        }
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
+    const startedListening = startRecording();
+    if (startedListening) {
       setInputMode("speech-to-text");
       setInputModes((previous) => appendUniqueMode(previous, "speech-to-text"));
-      setInputNotice("Ucapkan idemu. Ucapanmu akan muncul sebagai teks.");
-      setIsListening(true);
-    } catch {
-      recognitionRef.current = null;
-      setIsListening(false);
+    } else {
       setInputMode("writing");
-      setInputNotice(
-        "Fitur bicara tidak dapat dimulai. Kamu tetap bisa menulis jawaban.",
-      );
     }
   }
 
   function chooseWritingMode() {
     stopListening();
     setInputMode("writing");
-    setInputNotice("");
+    resetSpeechMessages();
   }
 
   function resetSession() {
@@ -333,13 +291,17 @@ export default function CreativityPlayer() {
     setResponseText("");
     setInputMode("writing");
     setInputModes([]);
-    setInputNotice("");
+    resetSpeechMessages();
     setElapsedSeconds(0);
     setHelpShown(false);
     setHelpCount(0);
     setStartedAt(null);
     setSessionRecord(null);
     setSaveWarning(false);
+    setVisionStatus("idle");
+    setDetectionStatus("manual-metadata-placeholder");
+    setDetectedVisionObjects([]);
+    setActiveSceneObjects([]);
     finishedRef.current = false;
   }
 
@@ -448,6 +410,16 @@ export default function CreativityPlayer() {
                 />
               </div>
 
+              {/* Status Computer Vision non-spoiler agar tidak membocorkan daftar objek ke siswa. */}
+              <p className="mt-2 flex items-center gap-2 text-xs text-[#65828B]" aria-live="polite">
+                <i className="bi bi-eye text-[#2A7387]" aria-hidden="true" />
+                {visionStatus === "detecting"
+                  ? "Menyiapkan pengenalan objek gambar..."
+                  : detectedVisionObjects.length > 0
+                    ? `Gambar siap diamati (${detectedVisionObjects.length} deteksi visual otomatis + referensi adegan).`
+                    : "Gambar siap diamati (menggunakan referensi adegan bawaan)."}
+              </p>
+
               {/* Timer hanya berupa progress bar, tanpa alarm atau indikator merah. */}
               <div className="mt-5 rounded-xl bg-[#F7FBFC] p-4">
                 <div className="mb-2 flex items-center justify-between text-xs font-semibold text-[#65828B]">
@@ -539,12 +511,24 @@ export default function CreativityPlayer() {
                 </div>
 
                 <p className="mt-3 text-xs leading-5 text-[#8199A1]">
-                  Ucapan diubah menjadi teks. CARAKA tidak menyimpan rekaman suara.
+                  Ucapan diubah menjadi teks (Bahasa Indonesia). CARAKA tidak menyimpan rekaman suara.
                 </p>
 
-                {inputNotice && (
+                {interimTranscript && (
+                  <p className="mt-3 rounded-xl bg-[#F1F7F9] p-3 text-sm leading-6 text-[#65828B]">
+                    <strong>Transkripsi sementara:</strong> {interimTranscript}
+                  </p>
+                )}
+
+                {speechStatusMessage && (
                   <p className="mt-3 rounded-xl bg-[#F1F7F9] p-3 text-sm leading-6 text-[#496C77]" role="status">
-                    {inputNotice}
+                    {speechStatusMessage}
+                  </p>
+                )}
+
+                {speechErrorMessage && (
+                  <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-700" role="alert">
+                    {speechErrorMessage}
                   </p>
                 )}
 
@@ -612,7 +596,7 @@ export default function CreativityPlayer() {
       </section>
 
       <footer className="border-t border-[#DCEBF0] px-5 py-6 text-center text-sm text-[#65828B]">
-        © 2026 CAKARA. Ruang belajar kreatif.
+        © 2026 CARAKA. Ruang belajar kreatif.
       </footer>
     </main>
   );

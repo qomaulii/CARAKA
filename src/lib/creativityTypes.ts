@@ -4,10 +4,24 @@ export type CreativityComplexity = "simple" | "medium" | "complex";
 export type CreativityInputMode = "writing" | "speech-to-text";
 export type CreativityFinishReason = "manual" | "timer";
 
+export type CreativityObjectDetectionStatus =
+  | "manual-metadata-placeholder"
+  | "cv-detected"
+  | "cv-partial-with-fallback"
+  | "cv-fallback-manual";
+
+export interface DetectedVisionObject {
+  rawClass: string;
+  labelId: string;
+  score: number;
+  bbox: [number, number, number, number];
+}
+
 export interface CreativityStimulusObject {
   name: string;
   keywords: string[];
   relatedTerms: string[];
+  source?: "cv" | "manual" | "cv+manual";
 }
 
 export interface CreativityScene {
@@ -18,13 +32,17 @@ export interface CreativityScene {
   complexity: CreativityComplexity;
   setting: string;
   objects: CreativityStimulusObject[];
-  objectDetectionStatus: "manual-metadata-placeholder";
+  objectDetectionStatus: CreativityObjectDetectionStatus;
 }
 
 export interface CreativityIndicators {
   mentionedObjectCount: number;
   mentionedObjects: string[];
+  // Kata terkait konteks (relatedTerms) dilacak terpisah dan tidak disamakan dengan objek langsung.
+  relatedContextTerms?: string[];
   hasReason: boolean;
+  hasEmotionObservation?: boolean;
+  hasFuturePrediction?: boolean;
   ideaVarietyCount: number;
   wordCount: number;
   characterCount: number;
@@ -42,7 +60,8 @@ export interface CreativitySessionRecord {
   imageSrc: string;
   complexityUsed: CreativityComplexity;
   sceneObjects: string[];
-  objectDetectionStatus: "manual-metadata-placeholder";
+  detectedVisionObjects?: DetectedVisionObject[];
+  objectDetectionStatus: CreativityObjectDetectionStatus;
   responseText: string;
   inputModes: CreativityInputMode[];
   startedAt: string;
