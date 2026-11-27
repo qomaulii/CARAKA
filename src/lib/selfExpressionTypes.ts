@@ -19,8 +19,10 @@ export interface SelfExpressionIndicators {
   matchedScenarioTerms: string[];
   scenarioRelevanceCount: number;
   hasFeelingExpression: boolean;
-  hasOpinionOrActionChoice: boolean;
+  hasOpinionExpression: boolean;
+  hasActionChoice: boolean;
   hasReason: boolean;
+  // Jumlah ini tetap memakai tiga kelompok adaptasi: perasaan/opini, tindakan, dan alasan.
   completedDimensionsCount: number;
   wordCount: number;
   characterCount: number;

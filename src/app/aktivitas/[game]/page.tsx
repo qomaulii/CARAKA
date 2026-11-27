@@ -1,4 +1,5 @@
 
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import KnowledgePlayer from "@/components/KnowledgePlayer";
@@ -11,17 +12,17 @@ const validGames = [
   "self-expression",
 ];
 
-export function generateStaticParams() {
-  return validGames.map((game) => ({
-    game,
-  }));
-}
-
 type Props = {
   params: Promise<{
     game: string;
   }>;
 };
+
+export function generateStaticParams() {
+  return validGames.map((game) => ({
+    game,
+  }));
+}
 
 export async function generateMetadata({
   params,
@@ -44,25 +45,22 @@ export async function generateMetadata({
   };
 }
 
-
-export default async function GamePage({ params }: Props) {
+// PERUBAHAN: akses params dipindahkan ke komponen asinkron.
+async function GameContent({ params }: Props) {
   const { game } = await params;
 
   if (!validGames.includes(game)) {
     notFound();
   }
 
-  // PERBAIKAN: Knowledge tetap menggunakan KnowledgePlayer.
   if (game === "knowledge") {
     return <KnowledgePlayer />;
   }
 
-  // PERBAIKAN: Creativity menggunakan komponen khusus yang baru.
   if (game === "creativity") {
     return <CreativityPlayer />;
   }
 
-  // Self-Expression menggunakan komponen khusus dengan Adaptive Engine tersendiri.
   if (game === "self-expression") {
     return <SelfExpressionPlayer />;
   }
@@ -70,3 +68,21 @@ export default async function GamePage({ params }: Props) {
   notFound();
 }
 
+// PERUBAHAN: Suspense membungkus komponen yang membaca URL params.
+export default function GamePage({ params }: Props) {
+  return (
+    <Suspense
+      fallback={
+        <div
+          className="flex min-h-screen items-center justify-center"
+          role="status"
+          aria-live="polite"
+        >
+          Menyiapkan aktivitas...
+        </div>
+      }
+    >
+      <GameContent params={params} />
+    </Suspense>
+  );
+}

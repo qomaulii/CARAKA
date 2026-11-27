@@ -574,13 +574,21 @@ export default function SelfExpressionPlayer() {
                     </span>
                     <span
                       className={`rounded-full px-3 py-1 ${
-                        liveIndicators.hasOpinionOrActionChoice
+                        liveIndicators.hasOpinionExpression
                           ? "bg-[#E9F7EF] text-[#24734A]"
                           : "bg-[#F1F7F9] text-[#65828B]"
                       }`}
                     >
-                      {liveIndicators.hasOpinionOrActionChoice ? "✓ " : ""}
-                      Pilihan tindakan
+                      {liveIndicators.hasOpinionExpression ? "✓ " : ""}Pendapat
+                    </span>
+                    <span
+                      className={`rounded-full px-3 py-1 ${
+                        liveIndicators.hasActionChoice
+                          ? "bg-[#E9F7EF] text-[#24734A]"
+                          : "bg-[#F1F7F9] text-[#65828B]"
+                      }`}
+                    >
+                      {liveIndicators.hasActionChoice ? "✓ " : ""}Pilihan tindakan
                     </span>
                     <span
                       className={`rounded-full px-3 py-1 ${

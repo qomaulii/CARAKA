@@ -108,13 +108,22 @@ export function analyzeSelfExpressionResponse(
     ),
   );
 
+  // Indikator perasaan hanya mengenali keadaan emosional, bukan kata "sendiri" yang
+  // dapat muncul sebagai keterangan keadaan tanpa menyatakan perasaan.
   const hasFeelingExpression =
-    /\b(perasaan|merasa|sedih|kesepian|sendiri|senang|bahagia|kecewa|bingung|cemas|takut|malu|marah|kasihan|nyaman|dihargai|prihatin|tidak enak|terganggu|peduli)\b/i.test(
+    /\b(sedih|kesepian|senang|bahagia|kecewa|bingung|cemas|khawatir|takut|malu|marah|kesal|gugup|lega|bangga|terharu|prihatin|kasihan|iba|bersalah|diabaikan|tidak dihargai|tidak diterima|tidak nyaman|tidak enak hati|merasa sendirian)\b/i.test(
       normalized,
     );
 
-  const hasOpinionOrActionChoice =
-    /\b(menurutku|menurut saya|pendapatku|pendapat saya|saya akan|aku akan|sebaiknya|akan|mengajak|membantu|menolong|membuang|memungut|berbicara|bilang|mengingatkan|mendengarkan|meminta|mengganti|mencari|menjelaskan|berdiskusi|sepakat|memilih|melakukan|menolak)\b/i.test(
+  // Pendapat dikenali dari ungkapan sudut pandang, bukan dari kata "akan" atau kata kerja tindakan.
+  const hasOpinionExpression =
+    /\b(menurutku|menurut saya|menurut aku|pendapatku|pendapat saya|pendapat aku|saya berpendapat|aku berpendapat|saya pikir|aku pikir|kupikir|saya rasa|aku rasa|kurasa|bagi saya|bagi aku|saya setuju|aku setuju|saya tidak setuju|aku tidak setuju|saya kurang setuju|aku kurang setuju|saya beranggapan|aku beranggapan)\b/i.test(
+      normalized,
+    );
+
+  // Pilihan tindakan memerlukan kata kerja tindakan yang eksplisit; kata "akan" saja tidak cukup.
+  const hasActionChoice =
+    /\b(mengajak|ajak|mengundang|membantu|bantu|menolong|tolong|memungut|pungut|membuang|buang|menegur|tegur|mengingatkan|ingatkan|mendengarkan|dengarkan|meminta maaf|minta maaf|meminta izin|minta izin|meminta bantuan|minta bantuan|meminta|minta|mengganti|ganti|mencari|cari|menjelaskan|jelaskan|berdiskusi|diskusi|menyampaikan|sampaikan|mengungkapkan|ungkapkan|berbicara|bicara|berkata|katakan|mengatakan|bilang|memberi tahu|memberitahu|memilih|pilih|memutuskan|putuskan|menolak|tolak|menerima|terima|mengembalikan|kembalikan|melaporkan|laporkan|menemani|temani|menunggu|tunggu|berbagi|menawarkan|tawarkan|menghubungi|hubungi|menyelesaikan|selesaikan|mengerjakan|kerjakan|menjaga|jaga|mengantre|antre|menyapa|sapa|berkenalan|kenalan|mengakui|akui|menghibur|hibur|menenangkan|tenangkan|menghargai|hargai|menghormati|hormati|bertanya|tanya|menjawab|jawab|bermain|main|pergi|ikut|mencoba|coba)\b/i.test(
       normalized,
     );
 
@@ -123,9 +132,11 @@ export function analyzeSelfExpressionResponse(
       normalized,
     );
 
+  // Ambang adaptasi tetap tiga kelompok seperti rancangan sebelumnya:
+  // (perasaan atau pendapat), tindakan, dan alasan.
   const completedDimensionsCount = [
-    hasFeelingExpression,
-    hasOpinionOrActionChoice,
+    hasFeelingExpression || hasOpinionExpression,
+    hasActionChoice,
     hasReason,
   ].filter(Boolean).length;
 
@@ -141,7 +152,8 @@ export function analyzeSelfExpressionResponse(
     matchedScenarioTerms,
     scenarioRelevanceCount: matchedScenarioTerms.length,
     hasFeelingExpression,
-    hasOpinionOrActionChoice,
+    hasOpinionExpression,
+    hasActionChoice,
     hasReason,
     completedDimensionsCount,
     wordCount: words.length,
